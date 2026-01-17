@@ -29,7 +29,7 @@ class HalfLinear(torch.nn.Linear):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Hint: Use the .to method to cast a tensor to a different dtype (i.e. torch.float16 or x.dtype)
         # The input and output should be of x.dtype = torch.float32
-        #TOD
+        #Hacer
         x16 = x.to(torch.float16)
         w = self.weight.detach()
         b = self.bias.detach() if self.bias is not None else None
