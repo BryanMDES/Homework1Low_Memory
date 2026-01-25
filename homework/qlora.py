@@ -15,32 +15,57 @@ class QLoRALinear(Linear4Bit):
         group_size: int = 16,
         bias: bool = True,
     ) -> None:
-        super().__init__(in_features, out_features, bias, group_size)
+        super().__init__(in_features, out_features, bias=bias, group_size=group_size)
         self.requires_grad_(False)
+        if self.bias is not None:
+            self.bias.requires_grad_(False)
+        self.linear_dtype = torch.float32
 
-        # TODO: Implement LoRA, initialize the layers, and make sure they are trainable
-        # Keep the LoRA layers in float32
-        raise NotImplementedError()
+        self.lora_dim = lora_dim
+        self.lora_alpha = float(lora_dim)  
+        self.scaling = self.lora_alpha / self.lora_dim
+
+        self.lora_A = torch.nn.Parameter(torch.empty(lora_dim, in_features, dtype=torch.float32))
+        self.lora_B = torch.nn.Parameter(torch.empty(out_features, lora_dim, dtype=torch.float32))
+
+        torch.nn.init.kaiming_uniform_(self.lora_A, a=5**0.5)
+        torch.nn.init.zeros_(self.lora_B)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # TODO: Forward. Make sure to cast inputs to self.linear_dtype and the output back to x.dtype
-        raise NotImplementedError()
-
+        x_in_dtype = x.dtype
+        base = super().forward(x.to(self.linear_dtype))
+        x32 = x.to(torch.float32)
+        delta = (x32 @ self.lora_A.t()) @ self.lora_B.t()
+        y = base + delta * self.scaling
+        return y.to(x_in_dtype)
 
 class QLoRABigNet(torch.nn.Module):
     class Block(torch.nn.Module):
         def __init__(self, channels, lora_dim, group_size):
             super().__init__()
-            # TODO: Implement me (feel free to copy and reuse code from bignet.py)
-            raise NotImplementedError()
+            self.model = torch.nn.Sequential(QLoRALinear(channels, channels, lora_dim=lora_dim, group_size=group_size),torch.nn.ReLU(),
+                QLoRALinear(channels, channels, lora_dim=lora_dim, group_size=group_size),
+                torch.nn.ReLU(),
+                QLoRALinear(channels, channels, lora_dim=lora_dim, group_size=group_size),)
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             return self.model(x) + x
 
     def __init__(self, lora_dim: int = 32, group_size: int = 16):
         super().__init__()
-        # TODO: Implement me (feel free to copy and reuse code from bignet.py)
-        raise NotImplementedError()
+        self.model = torch.nn.Sequential(
+            self.Block(BIGNET_DIM, lora_dim, group_size),
+            LayerNorm(BIGNET_DIM),
+            self.Block(BIGNET_DIM, lora_dim, group_size),
+            LayerNorm(BIGNET_DIM),
+            self.Block(BIGNET_DIM, lora_dim, group_size),
+            LayerNorm(BIGNET_DIM),
+            self.Block(BIGNET_DIM, lora_dim, group_size),
+            LayerNorm(BIGNET_DIM),
+            self.Block(BIGNET_DIM, lora_dim, group_size),
+            LayerNorm(BIGNET_DIM),
+            self.Block(BIGNET_DIM, lora_dim, group_size),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
